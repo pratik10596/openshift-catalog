@@ -1,0 +1,169 @@
+apiVersion: template.openshift.io/v1
+kind: Template
+labels:
+  template: java-quarkus-template
+  xpaas: 1.0.0
+message: Java Quarkus based application has been created in your project.
+metadata:
+  annotations:
+    description: Java Quarkus - Implemented in java
+    iconClass: icon-quarkus
+    openshift.io/display-name: Java Quarkus
+    openshift.io/provider-display-name: Java Quarkus App
+    tags: java, quarkus
+    template.openshift.io/documentation-url: 
+    template.openshift.io/long-description: Java Quarkus
+    version: 1.0.0
+  labels:
+  name: java-quarkus-template
+  selfLink: /apis/template.openshift.io/v1/namespaces/openshift/templates/java-quarkus-template
+objects:
+- apiVersion: v1
+  kind: "ImageStream"
+  metadata:
+    labels:
+      application: ${APPLICATION_NAME}
+    name: ${APPLICATION_NAME}
+  spec:
+    lookupPolicy:
+      local: false
+    tags:
+    - annotations: null
+      from:
+        kind: DockerImage
+        name: ${JAVA_QUARKUS_IMAGE}
+      generation: 1
+      importPolicy: 
+        scheduled: true
+      name: latest
+      referencePolicy:
+        type: Source
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    labels:
+      application: ${APPLICATION_NAME}
+      app.kubernetes.io/part-of: Java-Quarkus
+      app.openshift.io/runtime: quarkus
+      app.kubernetes.io/name: openshift-java-quarkus
+      app.kubernetes.io/instance: openshift-java-quarkus
+      app.kubernetes.io/component: integration
+    annotations:
+      app.openshift.io/connects-to: java-quarkus
+    name: ${APPLICATION_NAME}
+  spec:
+    replicas: 1
+    selector:
+      deploymentConfig: ${APPLICATION_NAME}
+    strategy:
+      type: Recreate
+    template:
+      metadata:
+        labels:
+          application: ${APPLICATION_NAME}
+          deploymentConfig: ${APPLICATION_NAME}
+        name: ${APPLICATION_NAME}
+      spec:
+        serviceAccountName: default
+        serviceAccount: default
+        containers:
+        - env:
+          - name: USER_NAME
+            valueFrom:
+              secretKeyRef:
+                key: USER_NAME
+                name: ${APPLICATION_NAME}-creds
+          - name: USER_PWD
+            valueFrom:
+              secretKeyRef:
+                key: pwd
+                name: ${APPLICATION_NAME}-creds
+          image: ${APPLICATION_NAME}
+          readinessProbe:
+            exec:
+              command:
+              - /bin/bash
+              - -c
+              - curl -u ${USER_NAME}:${USER_PWD} localhost:8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+          imagePullPolicy: Always
+          name: ${APPLICATION_NAME}
+          ports:
+          - containerPort: 8080
+            name: http
+            protocol: TCP
+          resources: {}
+        terminationGracePeriodSeconds: 30
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+    triggers:
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - ${APPLICATION_NAME}
+        from:
+          kind: ImageStreamTag
+          name: ${APPLICATION_NAME}:latest
+      type: ImageChange
+    - type: ConfigChange
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      description: The web server's http port.
+    labels:
+      application: ${APPLICATION_NAME}
+    name: ${APPLICATION_NAME}
+  spec:
+    ports:
+    - port: 8080
+      targetPort: 8080
+    selector:
+      deploymentConfig: ${APPLICATION_NAME}
+- apiVersion: v1
+  id: ${APPLICATION_NAME}-https
+  kind: Route
+  metadata:
+    annotations:
+      description: Route for application's https service.
+    labels:
+      application: ${APPLICATION_NAME}
+    name: ${APPLICATION_NAME}
+  spec:
+    port:
+      targetPort: "8080"
+    tls:
+      insecureEdgeTerminationPolicy: Redirect
+      termination: edge
+    to:
+      name: ${APPLICATION_NAME}
+- apiVersion: v1
+  kind: Secret
+  metadata:
+    name: ${APPLICATION_NAME}-creds
+  type: Opaque
+  stringData:
+    USER_NAME: "${USER_NAME}"
+    pwd: "${USER_PWD}"
+parameters:
+- description: The name for the application
+  displayName: Application Name
+  name: APPLICATION_NAME
+  required: true
+  value: java-quarkus
+- description: Enter Java Quarkus User Name
+  displayName: Java Quarkus User Name
+  name: USER_NAME
+  required: true
+- description: Enter Java Quarkus Password
+  displayName: Java Quarkus Password
+  name: USER_PWD
+  required: true
+- description: Repo URL for Java Quarkus Image
+  displayName: Java Quarkus Image URL
+  name: JAVA_QUARKUS_IMAGE
+  value: quay.io/pratik10596/java-quarkus
+  required: true
